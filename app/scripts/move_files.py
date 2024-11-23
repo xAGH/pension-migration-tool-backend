@@ -14,9 +14,11 @@ def move_files(
     primary_key: str,
     error_folder: Optional[str] = None,
 ) -> bool:
+    path = os.path.abspath(source_folder)
+
     for csv in os.listdir(source_folder):
-        source_path = os.path.join(source_folder, csv)
-        orm = CsvOrm(entity, primary_key, csv)
+        path = os.path.abspath(os.path.join(source_folder, csv))
+        orm = CsvOrm(entity, primary_key, path)
         has_error_folder = isinstance(error_folder, str)
         valid = orm.validate()
 
@@ -24,9 +26,8 @@ def move_files(
             return False
 
         folder = destination_folder if valid else error_folder
-        dest = os.path.join(folder, csv)
-
-        if os.path.isfile(source_path):
-            shutil.move(source_path, dest)
-
-        return True
+        dest = os.path.abspath(os.path.join(folder, csv))
+        print(path)
+        print(dest)
+        if os.path.isfile(path):
+            shutil.move(source_folder, dest)

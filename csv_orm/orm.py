@@ -2,7 +2,6 @@ import csv
 import ntpath
 import os
 import shutil
-from dataclasses import asdict, dataclass, fields, is_dataclass
 from io import TextIOWrapper
 from typing import Any, Generic, List, Optional, Type, TypeVar
 
@@ -33,7 +32,7 @@ class CsvOrm(Generic[T]):
         primary_key: Optional[str] = None,
         csv_path: Optional[str] = None,
     ):
-        self.__entity = entity if is_dataclass(entity) else dataclass(entity)
+        self.__entity = entity
 
         if not isinstance(csv_path, str):
             class_name = to_snake_case(self.entity.__name__)
@@ -44,21 +43,23 @@ class CsvOrm(Generic[T]):
         self.primary_key = primary_key
         if not os.path.exists(csv_path) or os.path.getsize(csv_path) == 0:
             self.__create_file(csv_path)
-        print(self.path)
         self.__ensure_fields()
         self.__ensure_primary_key()
 
+    def __get_class_attributes(self):
+        return list(self.entity.__fields__.keys())
+
     def __ensure_fields(self):
-        with open(self.path, mode="r") as f:
+        with open(self.path, mode="r", encoding="utf-8") as f:
             reader = csv.reader(f)
             csv_headers = next(reader)
-        class_attributes = [f.name for f in fields(self.entity)]
+        class_attributes = self.__get_class_attributes()
 
         if set(csv_headers) != set(class_attributes):
             raise HeaderMismatchError(csv_headers, class_attributes)
 
     def __ensure_primary_key(self):
-        with open(self.path, mode="r") as f:
+        with open(self.path, mode="r", encoding="utf-8") as f:
             reader = csv.reader(f)
             fields = next(reader)
 
@@ -70,28 +71,28 @@ class CsvOrm(Generic[T]):
         self.primary_key = fields[0]
 
     def __create_file(self, path: str):
-        with open(path, mode="w", newline="") as file:
-            fieldnames = [field.name for field in fields(self.entity)]
+        with open(path, mode="w", newline="", encoding="utf-8") as file:
+            fieldnames = self.__get_class_attributes()
             writer = csv.DictWriter(file, fieldnames=fieldnames)
             writer.writeheader()
 
     def __writer(self, file: TextIOWrapper):
-        entity = self.entity
-        return csv.DictWriter(file, fieldnames=[field.name for field in fields(entity)])
+        fieldnames = self.__get_class_attributes()
+        return csv.DictWriter(file, fieldnames=fieldnames)
 
     def validate(self) -> bool:
-        with open(self.path, mode="r") as file:
+        with open(self.path, mode="r", encoding="utf-8") as file:
             reader = csv.DictReader(file)
-        for row in reader:
-            try:
-                self.entity(**row)
-            except:
-                return False
-        return True
+            for row in reader:
+                try:
+                    self.entity(**row)
+                except:
+                    return False
+            return True
 
     def get_all(self) -> List[T]:
         instances = []
-        with open(self.path, mode="r") as file:
+        with open(self.path, encoding="utf-8", mode="r") as file:
             reader = csv.DictReader(file)
             for row in reader:
                 try:
@@ -102,13 +103,13 @@ class CsvOrm(Generic[T]):
         return instances
 
     def create(self, instance: Type[T]) -> T:
-        with open(self.path, mode="a", newline="") as file:
+        with open(self.path, encoding="utf-8", mode="a", newline="") as file:
             writer = self.__writer(file)
-            writer.writerow(asdict(instance))
+            writer.writerow(vars(instance))
         return instance
 
     def get_one(self, primary_key: Any) -> Optional[T]:
-        with open(self.path, mode="r") as file:
+        with open(self.path, encoding="utf-8", mode="r") as file:
             reader = csv.DictReader(file)
             for row in reader:
                 if str(row[self.primary_key]) == str(primary_key):
@@ -118,7 +119,7 @@ class CsvOrm(Generic[T]):
     def update(self, uid: int, **kwargs) -> bool:
         updated = False
         records = []
-        with open(self.path, mode="r") as file:
+        with open(self.path, encoding="utf-8", mode="r") as file:
             reader = csv.DictReader(file)
             for row in reader:
                 if int(row["uid"]) == uid:
@@ -127,7 +128,7 @@ class CsvOrm(Generic[T]):
                 records.append(row)
 
         if updated:
-            with open(self.path, mode="w", newline="") as file:
+            with open(self.path, encoding="utf-8", mode="w", newline="") as file:
                 writer = self.__writer(file)
                 writer.writeheader()
                 writer.writerows(records)
@@ -137,7 +138,7 @@ class CsvOrm(Generic[T]):
     def delete(self, uid: int) -> bool:
         deleted = False
         records = []
-        with open(self.path, mode="r") as file:
+        with open(self.path, encoding="utf-8", mode="r") as file:
             reader = csv.DictReader(file)
             for row in reader:
                 if int(row["uid"]) != uid:
@@ -146,7 +147,7 @@ class CsvOrm(Generic[T]):
                     deleted = True
 
         if deleted:
-            with open(self.path, mode="w", newline="") as file:
+            with open(self.path, encoding="utf-8", mode="w", newline="") as file:
                 writer = self.__writer(file)
                 writer.writeheader()
                 writer.writerows(records)
@@ -155,8 +156,7 @@ class CsvOrm(Generic[T]):
 
     def move_to(self, new_path: str):
         directory = new_path
-
-        if os.path.isfile(new_path):
+        if ".csv" in new_path:
             directory = os.path.dirname(new_path)
             new_file_path = new_path
         else:
